@@ -1,0 +1,143 @@
+pragma solidity =0.5.1;
+
+contract Blocrac{
+    
+    // the amount of money the team can make after completing the construction
+     uint private fee=20;
+
+    // government address
+     address payable public gov;
+    // construction team address
+     address payable public team;
+    // supplier address
+     address payable public supplier;
+    
+    // request variables
+     uint private product_id;
+     uint private unitprice_required;
+    // initial team account balance
+     uint public team_balance_A;
+    // post transaction team account balance
+     uint public team_balance_B;
+     uint public difference;
+    
+    // the amount of money needed for purchasing materials
+     uint public total_value;
+    
+    // status of first check (check whether the request raised by construction team is included in initial list)
+    enum First{Y,N}
+    First public first=First.N;
+
+    // status of second check (check whether the price is reasonable compared to market price)
+    enum Second{Y,N}
+    Second public second=Second.N;
+
+    // status of transaction (check whether construction team has inflated the cost)
+    enum Trans{Y,N}
+    Trans public trans=Trans.N;
+
+    // register government and construction team address
+    // set government budget to 10000
+    constructor(address payable _gov) public {
+        gov=_gov;
+    }
+
+    modifier only_gov {
+        require(msg.sender==gov);
+        _;
+    }
+
+    struct Item{
+        string itemname;
+        uint quantity;
+    }
+
+    struct Market_Item{
+        string itemname;
+        uint marketunitprice;
+    }
+
+    mapping(uint => Item) public itemlist;
+    mapping(uint => Market_Item) public marketlist;
+    
+    // add item to initial item list
+    function updateitemlist() public only_gov {
+        Item memory brick=Item('brick',100);
+        Item memory pipe=Item('pipe',200);
+        itemlist[0]=brick;
+        itemlist[1]=pipe;
+    }
+
+    // add market information
+    function updatemarketlist() public only_gov {
+        Market_Item memory brick=Market_Item('brick',5);
+        Market_Item memory pipe=Market_Item('pipe',10);
+        marketlist[0]=brick;
+        marketlist[1]=pipe;
+    }
+
+    // construction team raise request
+    function pullrequest(address payable _team, uint _id, uint _unitprice, uint _quantity, address payable _address) public {
+        team=_team;
+        product_id=_id;
+        unitprice_required=_unitprice;
+        total_value=_unitprice * _quantity;
+        supplier=_address;
+        team_balance_A=address(_team).balance;
+    }
+
+    // check if the item requested is included in initial list
+    function first_check() public only_gov returns(string memory) {
+        if (itemlist[product_id].quantity>0) {
+            first=First.Y;
+            return "Item is included in the initial list.";
+        } else {
+            first=First.N;
+            return "Item is not included, requiring manual review.";
+        }
+    }
+
+    // check if the price is reasonable
+    function second_check() public only_gov returns(string memory) {
+        if ((first==First.Y)) {
+            if (unitprice_required <= marketlist[product_id].marketunitprice){
+                second=Second.Y;
+                return "Price is reasonable";
+            } else {
+                second=Second.N;
+                return "Price is not reasonable, requiring manual review.";
+            }
+        } else {
+            return "Item is not included, requiring manual review.";
+        }
+    }
+
+    // government transfers money to construction team
+    function transaction_to_team() only_gov payable public {
+        require((second==Second.Y));
+        team.transfer(msg.value);
+    }
+
+    // construction team transfers money to supplier
+    function transaction_to_supplier() payable public {
+        supplier.transfer(msg.value);
+    }
+
+    // check if there is inflated cost
+    function checktransaction() public returns(string memory) {
+        team_balance_B=address(team).balance;
+        difference=team_balance_A-team_balance_B;
+        if (difference < 1 ether) {
+            trans=Trans.Y;
+            return "Transaction is verified.";
+        } else {
+            return "Require manual review.";
+        }
+    }
+
+    // final payment to construction team
+    function payment_to_team() only_gov payable public {
+        require((trans==Trans.Y));
+        team.transfer(msg.value);
+    }
+}
